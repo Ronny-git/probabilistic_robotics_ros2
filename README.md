@@ -36,7 +36,12 @@ ros2 launch nav2_bringup tb4_simulation_launch.py headless:=False
 
 6) ⚡ Alternative: über Script starten
 
+docker start ros2_nav2
+
+docker exec -it ros2_nav2 bash
+
 Wenn start_sim.sh existiert:
 
 cd /root/ros2_ws
 ./start_sim.sh
+
