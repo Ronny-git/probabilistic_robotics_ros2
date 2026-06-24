@@ -1,6 +1,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include <memory>
 
 class KFNode : public rclcpp::Node
 {
@@ -19,6 +20,8 @@ private:
   void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
   {
     geometry_msgs::msg::PoseStamped out;
+    out.header = msg->header;
+    out.pose = msg->pose.pose;
     pub_->publish(out);
   }
 
@@ -28,8 +31,8 @@ private:
 
 int main(int argc, char **argv)
 {
-    rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<KFNode>());
-    rclcpp::shutdown();
-    return 0;
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<KFNode>());
+  rclcpp::shutdown();
+  return 0;
 }

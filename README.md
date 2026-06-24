@@ -45,3 +45,21 @@ Wenn start_sim.sh existiert:
 cd /root/ros2_ws
 ./start_sim.sh
 
+Measurement dropout (sensor interruption) simulation
+-------------------------------------------------
+Each filter node supports simulated measurement dropouts via ROS parameters. Configure them before running the node.
+
+Parameters (namespace `dropout`):
+- `enabled` (bool): enable dropout simulation (default: false)
+- `period` (double): period of a repeating dropout window in seconds (default: 0.0)
+- `duration` (double): duration of each dropout window in seconds (default: 0.0)
+- `random` (bool): enable per-measurement random dropout (default: false)
+- `probability` (double): probability [0,1] of dropping an individual measurement when `random` is true (default: 0.0)
+
+Examples:
+- Enable periodic dropouts of 1 second every 10 seconds:
+    `ros2 run prob_pkg kf_node --ros-args --param dropout.enabled:=true --param dropout.period:=10.0 --param dropout.duration:=1.0`
+- Enable random dropouts with 10% probability per measurement:
+    `ros2 run prob_pkg ekf_node --ros-args --param dropout.enabled:=true --param dropout.random:=true --param dropout.probability:=0.1`
+
+The nodes will ignore incoming measurements during simulated dropouts; use this to evaluate estimator robustness and compute RMSE against ground truth while varying dropout parameters.
