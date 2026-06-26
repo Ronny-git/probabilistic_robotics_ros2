@@ -1,0 +1,75 @@
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Name: TF
+      Class: rviz_default_plugins/TF
+      Enabled: false
+      Show Axes: true
+      Marker Scale: 1.0
+      Frame Timeout: 1.0
+    - Name: Robot Model
+      Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Robot Description: robot_description
+      Alpha: 1.0
+      Update Topic: true
+      TF Prefix: ""
+      Visual Visible: true
+      Description Source: Robot Description
+    - Name: KF Covariance
+      Class: rviz_default_plugins/Marker
+      Enabled: true
+      Marker Topic: /kf/covariance
+      Queue Size: 10
+    - Name: KF Pose Arrow
+      Class: rviz_default_plugins/Marker
+      Enabled: true
+      Marker Topic: /kf/pose_arrow
+      Queue Size: 10
+    - Name: KF Path
+      Class: rviz_default_plugins/Path
+      Enabled: true
+      Topic: /kf/path
+      Color: {r: 0.0, g: 0.65, b: 1.0}
+      Alpha: 1.0
+      Style: Lines
+      Queue Size: 10
+    - Name: EKF Covariance
+      Class: rviz_default_plugins/Marker
+      Enabled: true
+      Marker Topic: /ekf/covariance
+      Queue Size: 10
+    - Name: EKF Pose Arrow
+      Class: rviz_default_plugins/Marker
+      Enabled: true
+      Marker Topic: /ekf/pose_arrow
+      Queue Size: 10
+    - Name: EKF Path
+      Class: rviz_default_plugins/Path
+      Enabled: true
+      Topic: /ekf/path
+      Color: {r: 0.2, g: 0.9, b: 0.2}
+      Alpha: 1.0
+      Style: Lines
+      Queue Size: 10
+    - Name: PF Covariance
+      Class: rviz_default_plugins/Marker
+      Enabled: true
+      Marker Topic: /pf/covariance
+      Queue Size: 10
+    - Name: PF Pose Arrow
+      Class: rviz_default_plugins/Marker
+      Enabled: true
+      Marker Topic: /pf/pose_arrow
+      Queue Size: 10
+    - Name: PF Path
+      Class: rviz_default_plugins/Path
+      Enabled: true
+      Topic: /pf/path
+      Color: {r: 0.9, g: 0.2, b: 0.2}
+      Alpha: 1.0
+      Style: Lines
+      Queue Size: 10
+  Global Options:
+    Fixed Frame: map
+  Name: root
