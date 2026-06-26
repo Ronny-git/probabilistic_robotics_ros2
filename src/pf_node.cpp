@@ -191,7 +191,7 @@ private:
     visualization_msgs::msg::Marker marker;
     marker.header = pose.header;
     marker.ns = "pf_covariance";
-    marker.id = 0;
+    marker.id = 5;
     marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
     marker.action = visualization_msgs::msg::Marker::ADD;
     marker.pose.orientation.w = 1.0;
@@ -224,6 +224,9 @@ private:
       p.z = 0.0;
       marker.points.push_back(p);
     }
+    if (!marker.points.empty()) {
+      marker.points.push_back(marker.points.front());
+    }
     return marker;
   }
 
@@ -232,7 +235,7 @@ private:
     visualization_msgs::msg::Marker marker;
     marker.header = pose.header;
     marker.ns = "pf_pose_arrow";
-    marker.id = 0;
+    marker.id = 6;
     marker.type = visualization_msgs::msg::Marker::ARROW;
     marker.action = visualization_msgs::msg::Marker::ADD;
     marker.pose = pose.pose;
@@ -240,8 +243,8 @@ private:
     marker.scale.y = 0.12;
     marker.scale.z = 0.12;
     marker.color.r = 0.9;
-    marker.color.g = 0.2;
-    marker.color.b = 0.2;
+    marker.color.g = 0.4;
+    marker.color.b = 0.1;
     marker.color.a = 0.9;
     return marker;
   }

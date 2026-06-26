@@ -2,6 +2,7 @@
 #include "nav_msgs/msg/odometry.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
 #include "visualization_msgs/msg/marker.hpp"
 #include <array>
 #include <memory>
@@ -10,6 +11,18 @@
 class EKFNode : public rclcpp::Node
 {
 public:
+
+  static std::array<double,4> invert2(const std::array<double,4> &m)
+  {
+    // m is row-major 2x2: [m00, m01, m10, m11]
+    const double a = m[0];
+    const double b = m[1];
+    const double c = m[2];
+    const double d = m[3];
+    const double det = a * d - b * c;
+    const double invdet = (std::fabs(det) < 1e-12) ? 1.0 / 1e-12 : 1.0 / det;
+    return { d * invdet, -b * invdet, -c * invdet, a * invdet };
+  }
   EKFNode() : Node("ekf_node")
   {
     sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
@@ -23,6 +36,10 @@ public:
       "/ekf/covariance", 10);
     pub_arrow_ = this->create_publisher<visualization_msgs::msg::Marker>(
       "/ekf/pose_arrow", 10);
+
+    sub_amcl_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+      "/amcl_pose", 10,
+      std::bind(&EKFNode::amcl_callback, this, std::placeholders::_1));
 
     path_.header.frame_id = "map";
     P_.fill(0.0);
@@ -83,29 +100,58 @@ private:
     };
 
     const std::array<double, 16> P_pred = mat4_add(mat4_mul(mat4_mul(F, P_), mat4_transpose(F)), Q_);
-    const std::array<double, 3> z = {meas_x, meas_y, meas_theta};
-    const std::array<double, 3> h = {x_pred[0], x_pred[1], x_pred[2]};
-    std::array<double, 3> y;
-    for (int i = 0; i < 3; ++i) {
-      y[i] = z[i] - h[i];
-    }
-    y[2] = normalize_angle(y[2]);
 
-    const std::array<double, 9> P_pred3 = extract_top_left_3x3(P_pred);
-    std::array<double, 9> S = mat3_add(P_pred3, R_);
-    const std::array<double, 9> S_inv = invert3(S);
-    const std::array<double, 12> P_pred_cols = extract_first_three_columns(P_pred);
-    const std::array<double, 12> K = mat4x3_mul_3x3(P_pred_cols, S_inv);
+    // Prediction-only: update state and covariance from odometry (motion model)
+    for (int i = 0; i < 4; ++i) state_[i] = x_pred[i];
+    P_ = P_pred;
 
-    const std::array<double, 4> K_y = mat4x3_vec_mul(K, y);
+    publish_state(stamp);
+  }
+
+  void amcl_callback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
+  {
+    if (!initialized_) return;
+    const rclcpp::Time stamp(msg->header.stamp);
+
+    // measurement: x,y from AMCL
+    const double z0 = msg->pose.pose.position.x;
+    const double z1 = msg->pose.pose.position.y;
+    const auto &cov = msg->pose.covariance; // 6x6 row-major
+    const double R00 = cov[0];
+    const double R01 = cov[1];
+    const double R10 = cov[6];
+    const double R11 = cov[7];
+
+    // S = H * P * H^T + R  (H selects x,y)
+    const double S00 = P_[0] + R00;
+    const double S01 = P_[1] + R01;
+    const double S10 = P_[4] + R10;
+    const double S11 = P_[5] + R11;
+    const std::array<double,4> S = {S00, S01, S10, S11};
+    const std::array<double,4> S_inv = invert2(S);
+
+    // P * H^T -> first two columns of P
+    std::array<double,4> Pcol0 = {P_[0], P_[4], P_[8], P_[12]};
+    std::array<double,4> Pcol1 = {P_[1], P_[5], P_[9], P_[13]};
+
+    double Kmat[8];
     for (int i = 0; i < 4; ++i) {
-      state_[i] = x_pred[i] + K_y[i];
+      Kmat[i*2 + 0] = Pcol0[i] * S_inv[0] + Pcol1[i] * S_inv[2];
+      Kmat[i*2 + 1] = Pcol0[i] * S_inv[1] + Pcol1[i] * S_inv[3];
     }
-    state_[2] = normalize_angle(state_[2]);
 
-    const std::array<double, 12> P_pred_top_rows = extract_first_three_rows(P_pred);
-    const std::array<double, 16> KPHt = mat4x3_mul_3x4(K, P_pred_top_rows);
-    P_ = mat4_sub(P_pred, KPHt);
+    const double y0 = z0 - state_[0];
+    const double y1 = z1 - state_[1];
+    for (int i = 0; i < 4; ++i) {
+      state_[i] += Kmat[i*2 + 0] * y0 + Kmat[i*2 + 1] * y1;
+    }
+
+    std::array<double,16> I = identity4();
+    for (int row = 0; row < 4; ++row) {
+      I[row*4 + 0] -= Kmat[row*2 + 0];
+      I[row*4 + 1] -= Kmat[row*2 + 1];
+    }
+    P_ = mat4_mul(I, P_);
 
     publish_state(stamp);
   }
@@ -136,10 +182,10 @@ private:
     visualization_msgs::msg::Marker marker;
     marker.header = pose.header;
     marker.ns = "ekf_covariance";
-    marker.id = 0;
+    marker.id = 3;
     marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
     marker.action = visualization_msgs::msg::Marker::ADD;
-    marker.pose.orientation.w = 1.0;
+    marker.pose = pose.pose;
     marker.scale.x = 0.06;
     marker.color.r = 0.0;
     marker.color.g = 1.0;
@@ -147,13 +193,15 @@ private:
     marker.color.a = 0.9;
 
     const double a = P[0];
-    const double b = P[1];
+    const double b = 0.5 * (P[1] + P[4]);
     const double c = P[5];
     const double trace = a + c;
     const double det = a * c - b * b;
     const double lambda = std::max(0.0, 0.5 * (trace + std::sqrt(std::max(0.0, trace * trace - 4.0 * det))));
     const double lambda2 = std::max(0.0, 0.5 * (trace - std::sqrt(std::max(0.0, trace * trace - 4.0 * det))));
     const double angle = 0.5 * std::atan2(2.0 * b, a - c);
+    const double robot_yaw = yaw_from_quaternion(pose.pose.orientation);
+    const double local_angle = angle - robot_yaw;
     const double r1 = 3.0 * std::sqrt(lambda);
     const double r2 = 3.0 * std::sqrt(lambda2);
 
@@ -161,13 +209,16 @@ private:
       const double theta = 2.0 * M_PI * i / 32.0;
       const double x = r1 * std::cos(theta);
       const double y = r2 * std::sin(theta);
-      const double gx = std::cos(angle) * x - std::sin(angle) * y + pose.pose.position.x;
-      const double gy = std::sin(angle) * x + std::cos(angle) * y + pose.pose.position.y;
+      const double gx = std::cos(local_angle) * x - std::sin(local_angle) * y;
+      const double gy = std::sin(local_angle) * x + std::cos(local_angle) * y;
       geometry_msgs::msg::Point p;
       p.x = gx;
       p.y = gy;
       p.z = 0.0;
       marker.points.push_back(p);
+    }
+    if (!marker.points.empty()) {
+      marker.points.push_back(marker.points.front());
     }
 
     return marker;
@@ -178,16 +229,16 @@ private:
     visualization_msgs::msg::Marker marker;
     marker.header = pose.header;
     marker.ns = "ekf_pose_arrow";
-    marker.id = 0;
+    marker.id = 4;
     marker.type = visualization_msgs::msg::Marker::ARROW;
     marker.action = visualization_msgs::msg::Marker::ADD;
     marker.pose = pose.pose;
     marker.scale.x = 0.6;
     marker.scale.y = 0.12;
     marker.scale.z = 0.12;
-    marker.color.r = 0.2;
-    marker.color.g = 0.9;
-    marker.color.b = 0.2;
+    marker.color.r = 0.0;
+    marker.color.g = 1.0;
+    marker.color.b = 0.4;
     marker.color.a = 0.9;
     return marker;
   }
@@ -204,6 +255,15 @@ private:
     const double siny = 2.0 * (q.w * q.z + q.x * q.y);
     const double cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
     return std::atan2(siny, cosy);
+  }
+
+  static std::array<double, 16> identity4()
+  {
+    std::array<double, 16> out{};
+    for (int i = 0; i < 4; ++i) {
+      out[i * 4 + i] = 1.0;
+    }
+    return out;
   }
 
   static geometry_msgs::msg::Quaternion quaternion_from_yaw(double yaw)
@@ -356,6 +416,7 @@ private:
   }
 
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr sub_amcl_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_pose_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_path_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pub_cov_;
