@@ -11,3 +11,9 @@ Wenn start_sim.sh existiert:
 cd /root/ros2_ws
 ./start_sim.sh
 
+
+
+
+
+
+Der vollständige Workspace für die Funktionierende Simulation befindet sich im Branch Version4
